@@ -1,0 +1,10 @@
+#!/usr/bin/env node
+const lib = require('../lib/cloudns-cloudformation-sync')
+
+lib.main()
+.then(() => {
+})
+.catch(err => {
+  console.error(err)
+  process.exit(1)
+})

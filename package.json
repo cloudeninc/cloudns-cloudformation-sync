@@ -1,0 +1,37 @@
+{
+  "name": "cloudns-cloudformation-sync",
+  "version": "1.0.0",
+  "description": "Copyright (C) Clouden Oy 2020",
+  "main": "lib/cloudns-cloudformation-sync.js",
+  "bin": {
+    "cloudns-cloudformation-sync": "bin/cloudns-cloudformation-sync"
+  },
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc",
+    "prepare": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cloudeninc/cloudns-cloudformation-sync.git"
+  },
+  "keywords": [],
+  "author": "Kenneth Falck <kennu@clouden.net>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/cloudeninc/cloudns-cloudformation-sync/issues"
+  },
+  "homepage": "https://github.com/cloudeninc/cloudns-cloudformation-sync#readme",
+  "dependencies": {
+    "aws-sdk": "^2.662.0",
+    "node-fetch": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^13.13.2",
+    "@types/node-fetch": "^2.5.7",
+    "typescript": "^3.8.3"
+  }
+}
