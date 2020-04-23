@@ -5,6 +5,10 @@ Released under the MIT license.
 
 This tool can be used to autogenerate ClouDNS records for CloudFormation resources like CloudFront distributions and API Gateway domains.
 
+Installation:
+
+    npm install cloudns-cloudformation-sync
+
 CloudFormation export name must specify the resource type and record hostname as follows:
 
     ClouDNS:CNAME:myhost:example:org
