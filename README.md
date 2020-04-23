@@ -21,7 +21,7 @@ Other resource types are also allowed (A, AAAA, ALIAS, etc).
 
 Command line usage:
 
-    AWS_PROFILE=xxx ts-node cloudns-cloudformation-sync.ts <cloudns-username> <cloudns-password-parameter-name> [ttl]
+    AWS_PROFILE=xxx cloudns-cloudformation-sync <cloudns-username> <cloudns-password-parameter-name> [ttl]
 
 Options:
 
