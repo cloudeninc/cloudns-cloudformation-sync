@@ -27,7 +27,7 @@
   "homepage": "https://github.com/cloudeninc/cloudns-cloudformation-sync#readme",
   "dependencies": {
     "aws-sdk": "^2.662.0",
-    "node-fetch": "^2.6.0"
+    "node-fetch": "^3.1.1"
   },
   "devDependencies": {
     "@types/node": "^13.13.2",
