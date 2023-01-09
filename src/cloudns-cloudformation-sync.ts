@@ -1,6 +1,6 @@
 /**
  * Read AWS CloudFormation Exports and autogenerate ClouDNS records based on their names and values.
- * Kenneth Falck <kennu@clouden.net> (C) Clouden Oy 2020
+ * Kenneth Falck <kennu@clouden.net> (C) Clouden Oy 2023
  *
  * This tool can be used to autogenerate ClouDNS records for CloudFormation resources like
  * CloudFront distributions and API Gateway domains.
@@ -23,7 +23,8 @@
  * <cloudns-password-parameter-name> - SSM Parameter with the encrypted ClouDNS API password
  * [ttl] - Optional TTL for generated records (defaults to 300)
  */
-import { SSM, CloudFormation } from 'aws-sdk'
+import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm'
+import { CloudFormationClient, ListExportsCommand, ListExportsOutput } from '@aws-sdk/client-cloudformation'
 import fetch from 'node-fetch'
 import * as querystring from 'querystring'
 
@@ -35,6 +36,8 @@ async function cloudnsRestCall(cloudnsUsername: string, cloudnsPassword: string,
     'sub-auth-user': cloudnsUsername,
     'auth-password': cloudnsPassword,
   }, queryOptions || {}))
+
+  // console.log('Note: Calling', fullUrl)
 
   const response = await fetch(fullUrl, {
     method: method,
@@ -71,6 +74,10 @@ async function autoDetectCloudnsHostAndZone(cloudnsUsername: string, cloudnsPass
     'domain-name': zoneName2,
   })
   zoneCache[zoneName2] = zoneResponse2
+
+  // console.log('Note: Response for host', hostName1, 'in zone', zoneName1, ':', zoneResponse1)
+  // console.log('Note: Response for host', hostName2, 'in zone', zoneName2, ':', zoneResponse2)
+
   const zoneName = (zoneResponse1.status === '1' ? zoneName1 : zoneResponse2.status === '1' ? zoneName2 : '')
   const hostName = (zoneResponse1.status === '1' ? hostName1 : zoneResponse2.status === '1' ? hostName2 : '')
   if (!zoneName) {
@@ -126,7 +133,7 @@ async function createOrUpdateCloudnsResource(cloudnsUsername: string, cloudnsPas
 }
 
 export async function main() {
-  console.log('ClouDNS CloudFormation Sync by Kenneth Falck <kennu@clouden.net> (C) Clouden Oy 2020')
+  console.log('ClouDNS CloudFormation Sync by Kenneth Falck <kennu@clouden.net> (C) Clouden Oy 2023')
   const cloudnsUsername = process.argv[2]
   const cloudnsPasswordParameter = process.argv[3]
   const ttlValue = process.argv[4] || '300'
@@ -139,21 +146,21 @@ export async function main() {
     process.exit(1)
   }
 
-  const ssm = new SSM()
+  const ssm = new SSMClient({})
   const zoneCache = {}
 
-  const response = await ssm.getParameter({
+  const response = await ssm.send(new GetParameterCommand({
     Name: cloudnsPasswordParameter,
     WithDecryption: true,
-  }).promise()
+  }))
   const cloudnsPassword = response.Parameter?.Value || ''
 
-  const cloudFormation = new CloudFormation()
+  const cloudFormation = new CloudFormationClient({})
   let nextToken
   do {
-    const response: CloudFormation.ListExportsOutput = await cloudFormation.listExports({
+    const response: ListExportsOutput = await cloudFormation.send(new ListExportsCommand({
       NextToken: nextToken,
-    }).promise()
+    }))
     for (const exportObj of response.Exports || []) {
       if (exportObj.Name?.match(/^ClouDNS:/)) {
         const nameParts = exportObj.Name.split(':')

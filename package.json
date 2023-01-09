@@ -1,7 +1,7 @@
 {
   "name": "cloudns-cloudformation-sync",
-  "version": "1.0.0",
-  "description": "Copyright (C) Clouden Oy 2020",
+  "version": "1.2.1",
+  "description": "Copyright (C) Clouden Oy 2023",
   "main": "lib/cloudns-cloudformation-sync.js",
   "bin": {
     "cloudns-cloudformation-sync": "bin/cloudns-cloudformation-sync"
@@ -12,7 +12,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
-    "prepare": "tsc"
+    "prepare": "tsc",
+    "ncu": "ncu -u -x 'node-fetch @types/node-fetch' && npm install",
+    "ncucheck": "ncu -x 'node-fetch @types/node-fetch'"
   },
   "repository": {
     "type": "git",
@@ -26,12 +28,13 @@
   },
   "homepage": "https://github.com/cloudeninc/cloudns-cloudformation-sync#readme",
   "dependencies": {
-    "aws-sdk": "^2.662.0",
+    "@aws-sdk/client-cloudformation": "^3.245.0",
+    "@aws-sdk/client-ssm": "^3.245.0",
     "node-fetch": "^2.6.0"
   },
   "devDependencies": {
-    "@types/node": "^13.13.2",
+    "@types/node": "^18.11.18",
     "@types/node-fetch": "^2.5.7",
-    "typescript": "^3.8.3"
+    "typescript": "^4.9.4"
   }
 }
