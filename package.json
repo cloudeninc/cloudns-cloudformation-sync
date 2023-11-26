@@ -1,6 +1,6 @@
 {
   "name": "cloudns-cloudformation-sync",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Copyright (C) Clouden Oy 2023",
   "main": "lib/cloudns-cloudformation-sync.js",
   "bin": {
@@ -28,13 +28,13 @@
   },
   "homepage": "https://github.com/cloudeninc/cloudns-cloudformation-sync#readme",
   "dependencies": {
-    "@aws-sdk/client-cloudformation": "^3.245.0",
-    "@aws-sdk/client-ssm": "^3.245.0",
+    "@aws-sdk/client-cloudformation": "^3.454.0",
+    "@aws-sdk/client-ssm": "^3.454.0",
     "node-fetch": "^2.6.0"
   },
   "devDependencies": {
-    "@types/node": "^18.11.18",
+    "@types/node": "^20.10.0",
     "@types/node-fetch": "^2.5.7",
-    "typescript": "^4.9.4"
+    "typescript": "^5.3.2"
   }
 }

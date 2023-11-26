@@ -1,6 +1,6 @@
 /**
  * Read AWS CloudFormation Exports and autogenerate ClouDNS records based on their names and values.
- * Kenneth Falck <kennu@clouden.net> (C) Clouden Oy 2023
+ * Kenneth Falck <kennu@clouden.net> (C) Clouden Oy 2020-2023
  *
  * This tool can be used to autogenerate ClouDNS records for CloudFormation resources like
  * CloudFront distributions and API Gateway domains.
@@ -16,12 +16,13 @@
  *
  * Other resource types are also allowed (A, AAAA, ALIAS, etc).
  *
- * Command line usage: AWS_PROFILE=xxx ts-node cloudns-cloudformation-sync.ts <cloudns-username> <cloudns-password-parameter-name> [ttl]
+ * Command line usage: AWS_PROFILE=xxx ts-node cloudns-cloudformation-sync.ts <cloudns-username> <cloudns-password-parameter-name> [ttl [stackName]]
  *
  * AWS_PROFILE=xxx - Specify your AWS profile in ~/.aws/credentials as an environment variable
  * <cloudns-username> - ClouDNS API sub-auth-user
  * <cloudns-password-parameter-name> - SSM Parameter with the encrypted ClouDNS API password
  * [ttl] - Optional TTL for generated records (defaults to 300)
+ * [stackName] - Optional CloudFormation stack name to limit the exports to scan (defaults to all stacks)
  */
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm'
 import { CloudFormationClient, ListExportsCommand, ListExportsOutput } from '@aws-sdk/client-cloudformation'
@@ -32,10 +33,19 @@ import * as querystring from 'querystring'
 process.env.AWS_SDK_LOAD_CONFIG = '1'
 
 async function cloudnsRestCall(cloudnsUsername: string, cloudnsPassword: string, method: string, relativeUrl: string, queryOptions: any) {
-  let fullUrl = 'https://api.cloudns.net' + relativeUrl + '?' + querystring.stringify(Object.assign({
-    'sub-auth-user': cloudnsUsername,
-    'auth-password': cloudnsPassword,
-  }, queryOptions || {}))
+  let fullUrl =
+    'https://api.cloudns.net' +
+    relativeUrl +
+    '?' +
+    querystring.stringify(
+      Object.assign(
+        {
+          'sub-auth-user': cloudnsUsername,
+          'auth-password': cloudnsPassword,
+        },
+        queryOptions || {}
+      )
+    )
 
   // console.log('Note: Calling', fullUrl)
 
@@ -43,8 +53,8 @@ async function cloudnsRestCall(cloudnsUsername: string, cloudnsPassword: string,
     method: method,
     headers: {
       'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    }
+      Accept: 'application/json',
+    },
   })
   if (!response.ok) {
     const errorText = await response.text()
@@ -58,28 +68,32 @@ async function autoDetectCloudnsHostAndZone(cloudnsUsername: string, cloudnsPass
   const nameParts = name.split('.')
 
   // Zone and host name for xxx.tld
-  const hostName1 = nameParts.slice(0, nameParts.length-2).join('.')
-  const zoneName1 = nameParts.slice(nameParts.length-2).join('.')
+  const hostName1 = nameParts.slice(0, nameParts.length - 2).join('.')
+  const zoneName1 = nameParts.slice(nameParts.length - 2).join('.')
 
   // Zone and host name for xxx.subtld.tld
-  const hostName2 = nameParts.slice(0, nameParts.length-3).join('.')
-  const zoneName2 = nameParts.slice(nameParts.length-3).join('.')
+  const hostName2 = nameParts.slice(0, nameParts.length - 3).join('.')
+  const zoneName2 = nameParts.slice(nameParts.length - 3).join('.')
 
   // Check which zone exists
-  const zoneResponse1 = zoneCache[zoneName1] || await cloudnsRestCall(cloudnsUsername, cloudnsPassword, 'GET', '/dns/get-zone-info.json', {
-    'domain-name': zoneName1,
-  })
+  const zoneResponse1 =
+    zoneCache[zoneName1] ||
+    (await cloudnsRestCall(cloudnsUsername, cloudnsPassword, 'GET', '/dns/get-zone-info.json', {
+      'domain-name': zoneName1,
+    }))
   zoneCache[zoneName1] = zoneResponse1
-  const zoneResponse2 = zoneCache[zoneName2] || await cloudnsRestCall(cloudnsUsername, cloudnsPassword, 'GET', '/dns/get-zone-info.json', {
-    'domain-name': zoneName2,
-  })
+  const zoneResponse2 =
+    zoneCache[zoneName2] ||
+    (await cloudnsRestCall(cloudnsUsername, cloudnsPassword, 'GET', '/dns/get-zone-info.json', {
+      'domain-name': zoneName2,
+    }))
   zoneCache[zoneName2] = zoneResponse2
 
   // console.log('Note: Response for host', hostName1, 'in zone', zoneName1, ':', zoneResponse1)
   // console.log('Note: Response for host', hostName2, 'in zone', zoneName2, ':', zoneResponse2)
 
-  const zoneName = (zoneResponse1.status === '1' ? zoneName1 : zoneResponse2.status === '1' ? zoneName2 : '')
-  const hostName = (zoneResponse1.status === '1' ? hostName1 : zoneResponse2.status === '1' ? hostName2 : '')
+  const zoneName = zoneResponse1.status === '1' ? zoneName1 : zoneResponse2.status === '1' ? zoneName2 : ''
+  const hostName = zoneResponse1.status === '1' ? hostName1 : zoneResponse2.status === '1' ? hostName2 : ''
   if (!zoneName) {
     // Neither zone exists
     throw new Error('Zone Not Found: ' + name)
@@ -90,13 +104,21 @@ async function autoDetectCloudnsHostAndZone(cloudnsUsername: string, cloudnsPass
   }
 }
 
-async function createOrUpdateCloudnsResource(cloudnsUsername: string, cloudnsPassword: string, name: string, type: string, value: string, ttlValue: string, zoneCache: any) {
+async function createOrUpdateCloudnsResource(
+  cloudnsUsername: string,
+  cloudnsPassword: string,
+  name: string,
+  type: string,
+  value: string,
+  ttlValue: string,
+  zoneCache: any
+) {
   const { zoneName, hostName } = await autoDetectCloudnsHostAndZone(cloudnsUsername, cloudnsPassword, name, zoneCache)
   // Does the record exist?
   const recordsResponse = await cloudnsRestCall(cloudnsUsername, cloudnsPassword, 'GET', '/dns/records.json', {
     'domain-name': zoneName,
-    'host': hostName,
-    'type': type,
+    host: hostName,
+    type: type,
   })
   const existingRecord: any = Object.values(recordsResponse)[0]
   if (existingRecord?.host === hostName && existingRecord?.type === type && existingRecord?.ttl === ttlValue && existingRecord?.record === value) {
@@ -108,60 +130,73 @@ async function createOrUpdateCloudnsResource(cloudnsUsername: string, cloudnsPas
     const result = await cloudnsRestCall(cloudnsUsername, cloudnsPassword, 'POST', '/dns/mod-record.json', {
       'domain-name': zoneName,
       'record-id': existingRecord?.id,
-      'host': hostName,
+      host: hostName,
       'record-type': type,
-      'record': value,
-      'ttl': ttlValue,
+      record: value,
+      ttl: ttlValue,
     })
     if (result.status === 'Failed') {
-      throw new Error( 'Modify record failed: ' + (result.statusMessage || result.statusDescription))
+      throw new Error('Modify record failed: ' + (result.statusMessage || result.statusDescription))
     }
   } else {
     // Create record
     console.log('CREATE', name, type, ttlValue, value, 'ZONE', zoneName, 'HOST', hostName)
     const result = await cloudnsRestCall(cloudnsUsername, cloudnsPassword, 'POST', '/dns/add-record.json', {
       'domain-name': zoneName,
-      'host': hostName,
+      host: hostName,
       'record-type': type,
-      'record': value,
-      'ttl': ttlValue,
+      record: value,
+      ttl: ttlValue,
     })
     if (result.status === 'Failed') {
-      throw new Error( 'Add record failed: ' + (result.statusMessage || result.statusDescription))
+      throw new Error('Add record failed: ' + (result.statusMessage || result.statusDescription))
     }
   }
 }
 
 export async function main() {
-  console.log('ClouDNS CloudFormation Sync by Kenneth Falck <kennu@clouden.net> (C) Clouden Oy 2023')
+  console.log('ClouDNS CloudFormation Sync by Kenneth Falck <kennu@clouden.net> (C) Clouden Oy 2020-2023')
   const cloudnsUsername = process.argv[2]
   const cloudnsPasswordParameter = process.argv[3]
   const ttlValue = process.argv[4] || '300'
+  const stackName = process.argv[5] || ''
   if (!cloudnsUsername) {
-    console.error('Usage: cloudns-cloudformation-sync <cloudns-username> <cloudns-password-parameter-name> [ttl]')
+    console.error('Usage: cloudns-cloudformation-sync <cloudns-username> <cloudns-password-parameter-name> [ttl [stackName]]')
     process.exit(1)
   }
   if (!cloudnsPasswordParameter) {
-    console.error('Usage: cloudns-cloudformation-sync <cloudns-username> <cloudns-password-parameter-name> [ttl]')
+    console.error('Usage: cloudns-cloudformation-sync <cloudns-username> <cloudns-password-parameter-name> [ttl [stackName]]')
     process.exit(1)
   }
 
   const ssm = new SSMClient({})
   const zoneCache = {}
 
-  const response = await ssm.send(new GetParameterCommand({
-    Name: cloudnsPasswordParameter,
-    WithDecryption: true,
-  }))
+  const response = await ssm.send(
+    new GetParameterCommand({
+      Name: cloudnsPasswordParameter,
+      WithDecryption: true,
+    })
+  )
   const cloudnsPassword = response.Parameter?.Value || ''
 
   const cloudFormation = new CloudFormationClient({})
   let nextToken
   do {
-    const response: ListExportsOutput = await cloudFormation.send(new ListExportsCommand({
-      NextToken: nextToken,
-    }))
+    const response: ListExportsOutput = await cloudFormation.send(
+      new ListExportsCommand({
+        NextToken: nextToken,
+      })
+    )
     for (const exportObj of response.Exports || []) {
+      if (stackName && exportObj.ExportingStackId !== stackName) {
+        // Check if the name part of the ID matches arn:aws:cloudformation:eu-west-1:<xxx>:stack/<name>/<xxx>
+        const m = exportObj.ExportingStackId?.match(/^arn:[^:]+:cloudformation:[^:]+:[^:]+:stack\/([^\/]+)\//)
+        if (!m || m[1] !== stackName) {
+          // Stack ID name part didn't match given stackName, so skip it
+          continue
+        }
+      }
       if (exportObj.Name?.match(/^ClouDNS:/)) {
         const nameParts = exportObj.Name.split(':')
         const resourceType = nameParts[1]
@@ -173,4 +208,3 @@ export async function main() {
     nextToken = response.NextToken
   } while (nextToken)
 }
-
