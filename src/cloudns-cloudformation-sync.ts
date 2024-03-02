@@ -1,6 +1,6 @@
 /**
  * Read AWS CloudFormation Exports and autogenerate ClouDNS records based on their names and values.
- * Kenneth Falck <kennu@clouden.net> (C) Clouden Oy 2020-2023
+ * Kenneth Falck <kennu@clouden.net> (C) Clouden Oy 2020-2024
  *
  * This tool can be used to autogenerate ClouDNS records for CloudFormation resources like
  * CloudFront distributions and API Gateway domains.
@@ -16,13 +16,13 @@
  *
  * Other resource types are also allowed (A, AAAA, ALIAS, etc).
  *
- * Command line usage: AWS_PROFILE=xxx ts-node cloudns-cloudformation-sync.ts <cloudns-username> <cloudns-password-parameter-name> [ttl [stackName]]
+ * Command line usage: AWS_PROFILE=xxx ts-node cloudns-cloudformation-sync.ts <cloudns-username> <cloudns-password-parameter-name> [ttl [stackName...]]
  *
  * AWS_PROFILE=xxx - Specify your AWS profile in ~/.aws/credentials as an environment variable
  * <cloudns-username> - ClouDNS API sub-auth-user
  * <cloudns-password-parameter-name> - SSM Parameter with the encrypted ClouDNS API password
  * [ttl] - Optional TTL for generated records (defaults to 300)
- * [stackName] - Optional CloudFormation stack name to limit the exports to scan (defaults to all stacks)
+ * [stackName...] - Optional CloudFormation stack name(s) to limit the exports to scan (defaults to all stacks)
  */
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm'
 import { CloudFormationClient, ListExportsCommand, ListExportsOutput } from '@aws-sdk/client-cloudformation'
@@ -155,17 +155,17 @@ async function createOrUpdateCloudnsResource(
 }
 
 export async function main() {
-  console.log('ClouDNS CloudFormation Sync by Kenneth Falck <kennu@clouden.net> (C) Clouden Oy 2020-2023')
+  console.log('ClouDNS CloudFormation Sync by Kenneth Falck <kennu@clouden.net> (C) Clouden Oy 2020-2024')
   const cloudnsUsername = process.argv[2]
   const cloudnsPasswordParameter = process.argv[3]
   const ttlValue = process.argv[4] || '300'
-  const stackName = process.argv[5] || ''
+  const stackNames = process.argv.slice(5)
   if (!cloudnsUsername) {
-    console.error('Usage: cloudns-cloudformation-sync <cloudns-username> <cloudns-password-parameter-name> [ttl [stackName]]')
+    console.error('Usage: cloudns-cloudformation-sync <cloudns-username> <cloudns-password-parameter-name> [ttl [stackName...]]')
     process.exit(1)
   }
   if (!cloudnsPasswordParameter) {
-    console.error('Usage: cloudns-cloudformation-sync <cloudns-username> <cloudns-password-parameter-name> [ttl [stackName]]')
+    console.error('Usage: cloudns-cloudformation-sync <cloudns-username> <cloudns-password-parameter-name> [ttl [stackName...]]')
     process.exit(1)
   }
 
@@ -189,10 +189,10 @@ export async function main() {
       })
     )
     for (const exportObj of response.Exports || []) {
-      if (stackName && exportObj.ExportingStackId !== stackName) {
+      if (stackNames.length && !stackNames.includes(exportObj.ExportingStackId || '')) {
         // Check if the name part of the ID matches arn:aws:cloudformation:eu-west-1:<xxx>:stack/<name>/<xxx>
         const m = exportObj.ExportingStackId?.match(/^arn:[^:]+:cloudformation:[^:]+:[^:]+:stack\/([^\/]+)\//)
-        if (!m || m[1] !== stackName) {
+        if (!m || !stackNames.includes(m[1])) {
           // Stack ID name part didn't match given stackName, so skip it
           continue
         }

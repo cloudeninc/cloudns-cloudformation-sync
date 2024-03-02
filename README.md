@@ -1,6 +1,6 @@
 # ClouDNS CloudFormation Sync
 
-Copyright (C) Clouden Oy 2020-2023, author Kenneth Falck <kennu@clouden.net>.
+Copyright (C) Clouden Oy 2020-2024, author Kenneth Falck <kennu@clouden.net>.
 
 Released under the MIT license.
 
@@ -30,7 +30,7 @@ Other resource types are also allowed (A, AAAA, ALIAS, etc).
 
 Use the cloudns-cloudformation-sync command to synchronize ClouDNS records.
 
-    AWS_PROFILE=xxx cloudns-cloudformation-sync <cloudns-username> <cloudns-password-parameter-name> [ttl [stackname]]
+    AWS_PROFILE=xxx cloudns-cloudformation-sync <cloudns-username> <cloudns-password-parameter-name> [ttl [stackname...]]
 
 Options:
 
@@ -38,6 +38,6 @@ Options:
     <cloudns-username> - ClouDNS API sub-auth-user
     <cloudns-password-parameter-name> - SSM Parameter with the encrypted ClouDNS API password
     [ttl] - Optional TTL for generated records (defaults to 300)
-    [stackName] - Optional CloudFormation stack name to limit the exports to scan (defaults to all stacks)
+    [stackName...] - Optional CloudFormation stack name(s) to limit the exports to scan (defaults to all stacks)
 
 You can create your ClouDNS API credentials in the ClouDNS management console.
