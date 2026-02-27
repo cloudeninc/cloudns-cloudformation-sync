@@ -26,13 +26,14 @@
  */
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm'
 import { CloudFormationClient, ListExportsCommand, ListExportsOutput } from '@aws-sdk/client-cloudformation'
-import fetch from 'node-fetch'
 import * as querystring from 'querystring'
 
 // Load ~/.aws/config
 process.env.AWS_SDK_LOAD_CONFIG = '1'
 
-async function cloudnsRestCall(cloudnsUsername: string, cloudnsPassword: string, method: string, relativeUrl: string, queryOptions: any) {
+type CloudnsRestCallResponse = any
+
+async function cloudnsRestCall(cloudnsUsername: string, cloudnsPassword: string, method: string, relativeUrl: string, queryOptions: any): Promise<CloudnsRestCallResponse> {
   let fullUrl =
     'https://api.cloudns.net' +
     relativeUrl +
@@ -61,7 +62,8 @@ async function cloudnsRestCall(cloudnsUsername: string, cloudnsPassword: string,
     console.error('HTTP Error', response.status, response.statusText, errorText)
     throw new Error(errorText)
   }
-  return response.json()
+  const parsedResponse: CloudnsRestCallResponse = await response.json()
+  return parsedResponse
 }
 
 async function autoDetectCloudnsHostAndZone(cloudnsUsername: string, cloudnsPassword: string, name: string, zoneCache: any) {
