@@ -28,11 +28,11 @@
   },
   "homepage": "https://github.com/cloudeninc/cloudns-cloudformation-sync#readme",
   "dependencies": {
-    "@aws-sdk/client-cloudformation": "^3.999.0",
-    "@aws-sdk/client-ssm": "^3.999.0"
+    "@aws-sdk/client-cloudformation": "^3.1024.0",
+    "@aws-sdk/client-ssm": "^3.1024.0"
   },
   "devDependencies": {
-    "@types/node": "^25.3.2",
-    "typescript": "^5.9.3"
+    "@types/node": "^25.5.2",
+    "typescript": "^6.0.2"
   }
 }

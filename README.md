@@ -1,6 +1,6 @@
 # ClouDNS CloudFormation Sync
 
-Copyright (C) Clouden Oy 2020-2024, author Kenneth Falck <kennu@clouden.net>.
+Copyright (C) Clouden Oy 2020-2026, author Kenneth Falck <kennu@clouden.net>.
 
 Released under the MIT license.
 
