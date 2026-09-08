@@ -37,7 +37,7 @@ Options:
     -u, --username <name>           ClouDNS API sub-auth-user
     -p, --password-parameter <ssm>  SSM parameter holding the encrypted ClouDNS API password
     -t, --ttl <seconds>             TTL for generated records (defaults to 300)
-    -s, --stack <name>              Limit to this CloudFormation stack; repeatable
+    -s, --stack <name|arn>          Limit to this CloudFormation stack; repeatable
     -z, --zone <name>               Also scan this zone when pruning; repeatable
         --prune                     Delete managed records whose export is gone
         --force-prune               Also prune when no exports were found; requires --zone
@@ -47,6 +47,7 @@ Options:
     -V, --version                   Show the version
 
     AWS_PROFILE=xxx - Specify your AWS profile in ~/.aws/credentials as an environment variable
+    DEBUG=1 - Print full stack traces instead of just the error message
 
 You can create your ClouDNS API credentials in the ClouDNS management console.
 
@@ -82,8 +83,13 @@ call than an instruction to empty the zone, so `--prune` alone refuses to act on
 is the deliberate version and requires an explicit `--zone`, because with no exports there is nothing
 to infer a zone from. Both are capped by `--max-prune`, and `--dry-run` shows what would go.
 
-A `--stack` that matched no exports is a warning normally and an error when pruning: at that point
-"no exports" and "delete everything" look identical, and the tool should not guess.
+A `--stack` that matched no exports is a warning normally and an error under `--prune`: at that
+point "no exports" and "delete everything" look identical, and the tool should not guess. Under
+`--force-prune` it is a warning again, because a torn-down stack producing nothing is exactly the
+case that flag exists for.
+
+`--stack` accepts a stack name or a full stack ARN, and pruning is scoped correctly either way —
+notes record the short name, and an ARN is resolved to it before the scope is applied.
 
 ## Verification
 

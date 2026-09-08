@@ -2,9 +2,10 @@
 const lib = require('../lib/cloudns-cloudformation-sync')
 
 lib.main()
-.then(() => {
-})
 .catch(err => {
-  console.error(err)
+  // Most failures here are the tool refusing to do something — a bad option, a prune it will not
+  // risk — and a stack trace on those buries the one sentence the caller needs to read. DEBUG=1
+  // brings the whole error back for the failures that are genuine bugs.
+  console.error(process.env.DEBUG || !err || !err.message ? err : `Error: ${err.message}`)
   process.exit(1)
 })

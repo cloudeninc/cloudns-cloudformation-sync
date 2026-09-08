@@ -1,10 +1,13 @@
 {
   "name": "cloudns-cloudformation-sync",
   "version": "2.0.0",
-  "description": "Copyright (C) Clouden Oy 2020-2026",
+  "description": "Generate ClouDNS DNS records from AWS CloudFormation exports",
   "main": "lib/cloudns-cloudformation-sync.js",
   "bin": {
     "cloudns-cloudformation-sync": "bin/cloudns-cloudformation-sync"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   },
   "directories": {
     "lib": "lib"
@@ -20,7 +23,15 @@
     "type": "git",
     "url": "git+https://github.com/cloudeninc/cloudns-cloudformation-sync.git"
   },
-  "keywords": [],
+  "keywords": [
+    "cloudns",
+    "dns",
+    "aws",
+    "cloudformation",
+    "cloudfront",
+    "api-gateway",
+    "sync"
+  ],
   "author": "Kenneth Falck <kennu@clouden.net>",
   "license": "MIT",
   "bugs": {

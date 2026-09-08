@@ -89,9 +89,9 @@ Usage: cloudns-cloudformation-sync -u <username> -p <password-parameter> [option
        cloudns-cloudformation-sync <username> <password-parameter> [ttl [stack...]]   (legacy)
 
   -u, --username <name>         ClouDNS API sub-auth-user
-  -p, --password-parameter <ssm>  SSM parameter holding the encrypted ClouDNS API password
+  -p, --password-parameter <p>  SSM parameter holding the encrypted ClouDNS API password
   -t, --ttl <seconds>           TTL for generated records (default 300)
-  -s, --stack <name>            Limit to this CloudFormation stack; repeatable
+  -s, --stack <name|arn>        Limit to this CloudFormation stack; repeatable
   -z, --zone <name>             Also scan this zone when pruning; repeatable
       --prune                   Delete managed records whose export is gone
       --force-prune             Also prune when no exports were found; requires --zone
@@ -100,7 +100,7 @@ Usage: cloudns-cloudformation-sync -u <username> -p <password-parameter> [option
   -h, --help                    Show this help
   -V, --version                 Show the version
 
-AWS_PROFILE selects the AWS credentials, as usual.`
+AWS_PROFILE selects the AWS credentials, as usual. DEBUG=1 prints full stack traces on error.`
 
 export function parseArgs(argv: string[]): Options {
   const options: Options = {
@@ -183,10 +183,16 @@ function applyFlags(argv: string[], options: Options): void {
         options.prune = true
         options.forcePrune = true
         break
-      case '--max-prune':
-        options.maxPrune = parseInt(next(i, arg), 10)
+      case '--max-prune': {
+        const raw = next(i, arg)
+        const parsed = Number(raw)
+        // Number('abc') is NaN, and `orphans.length > NaN` is false — an unvalidated value here
+        // would quietly remove the cap rather than tighten it.
+        if (!Number.isInteger(parsed) || parsed < 0) throw new Error(`--max-prune needs a non-negative integer, got: ${raw}`)
+        options.maxPrune = parsed
         i++
         break
+      }
       case '-n':
       case '--dry-run':
         options.dryRun = true
@@ -292,15 +298,29 @@ async function autoDetectCloudnsHostAndZone(cloudnsUsername: string, cloudnsPass
   }
 }
 
-/** Every record in a zone, notes included. Also the basis for finding orphans. */
-async function listZoneRecords(cloudnsUsername: string, cloudnsPassword: string, zoneName: string): Promise<CloudnsRecord[]> {
+/**
+ * Every record in a zone, notes included. Also the basis for finding orphans.
+ *
+ * Cached per run: looking a record up and then verifying it used to cost two whole-zone calls each,
+ * so twenty exports meant forty listings against an API that rate limits. Any write invalidates the
+ * zone, and verification always reads fresh, so a cached listing is never used to judge something
+ * that has just changed.
+ */
+const zoneRecordsCache = new Map<string, CloudnsRecord[]>()
+
+async function listZoneRecords(cloudnsUsername: string, cloudnsPassword: string, zoneName: string, fresh = false): Promise<CloudnsRecord[]> {
+  if (!fresh) {
+    const cached = zoneRecordsCache.get(zoneName)
+    if (cached) return cached
+  }
   const response = await cloudnsRestCall(cloudnsUsername, cloudnsPassword, 'GET', '/dns/records.json', {
     'domain-name': zoneName,
     'include-notes': '1',
   })
   // An empty zone comes back as an empty array rather than an empty object.
-  if (!response || Array.isArray(response)) return []
-  return Object.values(response) as CloudnsRecord[]
+  const records = !response || Array.isArray(response) ? [] : (Object.values(response) as CloudnsRecord[])
+  zoneRecordsCache.set(zoneName, records)
+  return records
 }
 
 function ownershipNote(stackName: string, exportName: string): string {
@@ -329,6 +349,7 @@ async function setRecordNote(
     note: note,
   })
   assertSuccess(result, 'Set record note')
+  zoneRecordsCache.delete(zoneName)
 }
 
 async function createOrUpdateCloudnsResource(
@@ -406,7 +427,7 @@ async function createOrUpdateCloudnsResource(
  * ALIAS targets on its own schedule, so what the zone *serves* can lag the record by a long way.
  */
 async function verifyRecord(cloudnsUsername: string, cloudnsPassword: string, desired: DesiredRecord, ttlValue: string): Promise<void> {
-  const records = await listZoneRecords(cloudnsUsername, cloudnsPassword, desired.zoneName)
+  const records = await listZoneRecords(cloudnsUsername, cloudnsPassword, desired.zoneName, true)
   const stored = records.find((record) => record.host === desired.hostName && record.type === desired.type)
   if (!stored) {
     throw new Error(`Verification failed: ${desired.hostName}.${desired.zoneName} ${desired.type} is missing after write`)
@@ -430,16 +451,17 @@ async function pruneOrphans(
   cloudnsPassword: string,
   zoneNames: string[],
   desired: DesiredRecord[],
+  stackScope: Set<string> | undefined,
   options: Options
 ): Promise<void> {
   const desiredKeys = new Set(desired.map((record) => `${record.zoneName}|${record.hostName}|${record.type}`))
   const orphans: { zoneName: string; record: CloudnsRecord }[] = []
 
   for (const zoneName of zoneNames) {
-    for (const record of await listZoneRecords(cloudnsUsername, cloudnsPassword, zoneName)) {
+    for (const record of await listZoneRecords(cloudnsUsername, cloudnsPassword, zoneName, true)) {
       const stack = noteStackName(record)
       if (stack === undefined) continue // not ours
-      if (options.stackNames.length && !options.stackNames.includes(stack)) continue // another stack's
+      if (stackScope && !stackScope.has(stack)) continue // another stack's
       if (desiredKeys.has(`${zoneName}|${record.host}|${record.type}`)) continue // still wanted
       orphans.push({ zoneName, record })
     }
@@ -455,11 +477,14 @@ async function pruneOrphans(
     console.log(options.dryRun ? 'WOULD PRUNE' : 'PRUNE', name, record.type, record.record, 'ZONE', zoneName)
   }
 
-  if (orphans.length > options.maxPrune) {
+  const overCap = orphans.length > options.maxPrune
+  if (options.dryRun) {
+    if (overCap) console.warn('WARN', `A real run would refuse: ${orphans.length} records exceeds --max-prune ${options.maxPrune}`)
+    return
+  }
+  if (overCap) {
     throw new Error(`Refusing to delete ${orphans.length} records in one run (limit ${options.maxPrune}); raise --max-prune if this is intended`)
   }
-
-  if (options.dryRun) return
 
   for (const { zoneName, record } of orphans) {
     const result = await cloudnsRestCall(cloudnsUsername, cloudnsPassword, 'POST', '/dns/delete-record.json', {
@@ -471,8 +496,9 @@ async function pruneOrphans(
 }
 
 export async function main() {
-  console.log('ClouDNS CloudFormation Sync by Kenneth Falck <kennu@clouden.net> (C) Clouden Oy 2020-2026')
+  // Parsed before the banner so --version and --help print only what a caller asked for.
   const options = parseArgs(process.argv.slice(2))
+  console.log('ClouDNS CloudFormation Sync by Kenneth Falck <kennu@clouden.net> (C) Clouden Oy 2020-2026')
 
   if (!options.username || !options.passwordParameter) {
     console.error(USAGE)
@@ -497,7 +523,10 @@ export async function main() {
   // Collect everything the exports ask for before writing anything, so pruning can compare against
   // the complete picture rather than against whatever has been processed so far.
   const desired: DesiredRecord[] = []
+  /** Every spelling of a stack that matched, so --stack can be given as a name or a full ARN. */
   const matchedStacks = new Set<string>()
+  /** Short names only, which is the form ownership notes carry, so pruning can be scoped by them. */
+  const matchedStackNames = new Set<string>()
   const cloudFormation = new CloudFormationClient({})
   let nextToken
   do {
@@ -515,6 +544,8 @@ export async function main() {
       const resourceName = nameParts.slice(2).join('.')
       const { zoneName, hostName } = await autoDetectCloudnsHostAndZone(options.username, cloudnsPassword, resourceName, zoneCache)
       matchedStacks.add(stackName)
+      matchedStackNames.add(stackName)
+      if (exportObj.ExportingStackId) matchedStacks.add(exportObj.ExportingStackId)
       desired.push({
         zoneName,
         hostName,
@@ -529,13 +560,16 @@ export async function main() {
 
   /**
    * A --stack that matched nothing is nearly always a typo or a stack that has not deployed yet.
-   * It used to pass silently as a no-op; with pruning enabled the same condition would look like
-   * "every record is an orphan", so it is fatal there and a warning otherwise.
+   * It used to pass silently as a no-op; with --prune the same condition would look like "every
+   * record is an orphan", so it is fatal there and a warning otherwise.
+   *
+   * --force-prune is the exception: a torn-down stack producing no exports is precisely the case it
+   * exists for, and the caller has already had to name the zone explicitly to get this far.
    */
   for (const stackName of options.stackNames) {
     if (!matchedStacks.has(stackName)) {
       const message = `Stack ${stackName} produced no ClouDNS exports`
-      if (options.prune) throw new Error(`${message}; refusing to prune on an unverified stack name`)
+      if (options.prune && !options.forcePrune) throw new Error(`${message}; refusing to prune on an unverified stack name`)
       console.warn('WARN', message)
     }
   }
@@ -552,5 +586,11 @@ export async function main() {
   }
 
   const zoneNames = [...new Set([...options.zoneNames, ...desired.map((record) => record.zoneName)])]
-  await pruneOrphans(options.username, cloudnsPassword, zoneNames, desired, options)
+  /**
+   * Notes record the short stack name, so scoping on the raw --stack values would silently prune
+   * nothing when one was given as an ARN. Both spellings go in: the resolved names cover the ARN
+   * case, and the raw values cover --force-prune, where a torn-down stack resolves to nothing.
+   */
+  const stackScope = options.stackNames.length ? new Set([...matchedStackNames, ...options.stackNames]) : undefined
+  await pruneOrphans(options.username, cloudnsPassword, zoneNames, desired, stackScope, options)
 }
