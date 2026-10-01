@@ -26,6 +26,10 @@ The above example will generate the following record in the ClouDNS zone example
 
 Other resource types are also allowed (A, AAAA, ALIAS, etc).
 
+The zone is the most specific one the ClouDNS account holds. With both `example.org` and a delegated
+`dev.example.org`, an export for `myhost:dev:example:org` is written into `dev.example.org`, which is
+the zone that actually answers for it.
+
 ### DKIM records
 
 An export name may only contain letters, digits, colons and hyphens, so it cannot spell the
