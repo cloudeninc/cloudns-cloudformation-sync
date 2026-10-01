@@ -1,6 +1,6 @@
 {
   "name": "cloudns-cloudformation-sync",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Generate ClouDNS DNS records from AWS CloudFormation exports",
   "main": "lib/cloudns-cloudformation-sync.js",
   "bin": {

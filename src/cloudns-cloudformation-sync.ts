@@ -261,41 +261,32 @@ function assertSuccess(result: any, what: string): void {
   throw new Error(`${what} failed: ${result?.statusDescription || result?.statusMessage || JSON.stringify(result)}`)
 }
 
-async function autoDetectCloudnsHostAndZone(cloudnsUsername: string, cloudnsPassword: string, name: string, zoneCache: any) {
+/**
+ * The ClouDNS zone a record name belongs to, and its host name within that zone.
+ *
+ * The most specific zone the account holds wins, the way DNS delegation does: with both example.org
+ * and a delegated dev.example.org, www.dev.example.org goes into dev.example.org, because a record
+ * written into example.org under that name is never served once the subdomain is delegated. Checked
+ * from the full name down to two labels, so a name that is itself a zone gets the apex (empty host).
+ */
+export async function autoDetectCloudnsHostAndZone(cloudnsUsername: string, cloudnsPassword: string, name: string, zoneCache: any) {
   const nameParts = name.split('.')
-
-  // Zone and host name for xxx.tld
-  const hostName1 = nameParts.slice(0, nameParts.length - 2).join('.')
-  const zoneName1 = nameParts.slice(nameParts.length - 2).join('.')
-
-  // Zone and host name for xxx.subtld.tld
-  const hostName2 = nameParts.slice(0, nameParts.length - 3).join('.')
-  const zoneName2 = nameParts.slice(nameParts.length - 3).join('.')
-
-  // Check which zone exists
-  const zoneResponse1 =
-    zoneCache[zoneName1] ||
-    (await cloudnsRestCall(cloudnsUsername, cloudnsPassword, 'GET', '/dns/get-zone-info.json', {
-      'domain-name': zoneName1,
-    }))
-  zoneCache[zoneName1] = zoneResponse1
-  const zoneResponse2 =
-    zoneCache[zoneName2] ||
-    (await cloudnsRestCall(cloudnsUsername, cloudnsPassword, 'GET', '/dns/get-zone-info.json', {
-      'domain-name': zoneName2,
-    }))
-  zoneCache[zoneName2] = zoneResponse2
-
-  const zoneName = zoneResponse1.status === '1' ? zoneName1 : zoneResponse2.status === '1' ? zoneName2 : ''
-  const hostName = zoneResponse1.status === '1' ? hostName1 : zoneResponse2.status === '1' ? hostName2 : ''
-  if (!zoneName) {
-    // Neither zone exists
-    throw new Error('Zone Not Found: ' + name)
+  for (let zoneLabels = nameParts.length; zoneLabels >= 2; zoneLabels--) {
+    const zoneName = nameParts.slice(nameParts.length - zoneLabels).join('.')
+    const zoneResponse =
+      zoneCache[zoneName] ||
+      (await cloudnsRestCall(cloudnsUsername, cloudnsPassword, 'GET', '/dns/get-zone-info.json', {
+        'domain-name': zoneName,
+      }))
+    zoneCache[zoneName] = zoneResponse
+    if (zoneResponse.status === '1') {
+      return {
+        hostName: nameParts.slice(0, nameParts.length - zoneLabels).join('.'),
+        zoneName: zoneName,
+      }
+    }
   }
-  return {
-    hostName: hostName,
-    zoneName: zoneName,
-  }
+  throw new Error('Zone Not Found: ' + name)
 }
 
 /**
@@ -495,6 +486,26 @@ async function pruneOrphans(
   }
 }
 
+/**
+ * Turns an export name into the record it describes: ClouDNS:<type>:<host labels...>.
+ *
+ * DKIM is the one form that is not a record type. An export name may only hold letters, digits,
+ * colons and hyphens, and a DKIM record lives under `_domainkey`, which no export name can spell.
+ * So ClouDNS:DKIM:<selector>:example:org stands for the CNAME <selector>._domainkey.example.org -
+ * the shape SES Easy DKIM asks for, three of them per domain.
+ */
+export function parseExportName(exportName: string): { resourceType: string; resourceName: string } {
+  const nameParts = exportName.split(':')
+  if (nameParts[1] === 'DKIM') {
+    const [selector, ...domainParts] = nameParts.slice(2)
+    if (!selector || domainParts.length < 2) {
+      throw new Error(`Export ${exportName} must be ClouDNS:DKIM:<selector>:<domain labels>`)
+    }
+    return { resourceType: 'CNAME', resourceName: `${selector}._domainkey.${domainParts.join('.')}` }
+  }
+  return { resourceType: nameParts[1], resourceName: nameParts.slice(2).join('.') }
+}
+
 export async function main() {
   // Parsed before the banner so --version and --help print only what a caller asked for.
   const options = parseArgs(process.argv.slice(2))
@@ -539,9 +550,7 @@ export async function main() {
       }
       if (!exportObj.Name?.match(/^ClouDNS:/)) continue
 
-      const nameParts = exportObj.Name.split(':')
-      const resourceType = nameParts[1]
-      const resourceName = nameParts.slice(2).join('.')
+      const { resourceType, resourceName } = parseExportName(exportObj.Name)
       const { zoneName, hostName } = await autoDetectCloudnsHostAndZone(options.username, cloudnsPassword, resourceName, zoneCache)
       matchedStacks.add(stackName)
       matchedStackNames.add(stackName)
