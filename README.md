@@ -26,6 +26,24 @@ The above example will generate the following record in the ClouDNS zone example
 
 Other resource types are also allowed (A, AAAA, ALIAS, etc).
 
+### DKIM records
+
+An export name may only contain letters, digits, colons and hyphens, so it cannot spell the
+`_domainkey` label every DKIM record lives under. Use the `DKIM` form instead, with the selector
+first and then the domain:
+
+    ClouDNS:DKIM:abcdefghijklmnopqrstuvwxyz012345:example:org
+
+with the export value as the CNAME target:
+
+    abcdefghijklmnopqrstuvwxyz012345.dkim.amazonses.com
+
+That generates the following record in the ClouDNS zone example.org:
+
+    abcdefghijklmnopqrstuvwxyz012345._domainkey.example.org CNAME abcdefghijklmnopqrstuvwxyz012345.dkim.amazonses.com
+
+This is the shape Amazon SES Easy DKIM asks for, with three such records per domain.
+
 ## Command line usage
 
 Use the cloudns-cloudformation-sync command to synchronize ClouDNS records.

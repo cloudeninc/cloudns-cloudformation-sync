@@ -495,6 +495,26 @@ async function pruneOrphans(
   }
 }
 
+/**
+ * Turns an export name into the record it describes: ClouDNS:<type>:<host labels...>.
+ *
+ * DKIM is the one form that is not a record type. An export name may only hold letters, digits,
+ * colons and hyphens, and a DKIM record lives under `_domainkey`, which no export name can spell.
+ * So ClouDNS:DKIM:<selector>:example:org stands for the CNAME <selector>._domainkey.example.org -
+ * the shape SES Easy DKIM asks for, three of them per domain.
+ */
+export function parseExportName(exportName: string): { resourceType: string; resourceName: string } {
+  const nameParts = exportName.split(':')
+  if (nameParts[1] === 'DKIM') {
+    const [selector, ...domainParts] = nameParts.slice(2)
+    if (!selector || domainParts.length < 2) {
+      throw new Error(`Export ${exportName} must be ClouDNS:DKIM:<selector>:<domain labels>`)
+    }
+    return { resourceType: 'CNAME', resourceName: `${selector}._domainkey.${domainParts.join('.')}` }
+  }
+  return { resourceType: nameParts[1], resourceName: nameParts.slice(2).join('.') }
+}
+
 export async function main() {
   // Parsed before the banner so --version and --help print only what a caller asked for.
   const options = parseArgs(process.argv.slice(2))
@@ -539,9 +559,7 @@ export async function main() {
       }
       if (!exportObj.Name?.match(/^ClouDNS:/)) continue
 
-      const nameParts = exportObj.Name.split(':')
-      const resourceType = nameParts[1]
-      const resourceName = nameParts.slice(2).join('.')
+      const { resourceType, resourceName } = parseExportName(exportObj.Name)
       const { zoneName, hostName } = await autoDetectCloudnsHostAndZone(options.username, cloudnsPassword, resourceName, zoneCache)
       matchedStacks.add(stackName)
       matchedStackNames.add(stackName)
