@@ -15,9 +15,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
-    "prepare": "tsc",
-    "ncu": "ncu -u && npm install",
-    "ncucheck": "ncu"
+    "prepare": "bun run build",
+    "ncu": "bunx npm-check-updates -u && bun install",
+    "ncucheck": "bunx npm-check-updates"
   },
   "repository": {
     "type": "git",
