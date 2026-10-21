@@ -8,7 +8,9 @@ This tool can be used to autogenerate ClouDNS records for CloudFormation resourc
 
 ## Installation
 
-    npm install cloudns-cloudformation-sync
+    bun add cloudns-cloudformation-sync
+
+The command runs on Node.js 20 or later, so installing it with npm works too.
 
 ## Defining CloudFormation Exports
 
@@ -119,3 +121,15 @@ Writes are read back and compared, so the log reports what the zone holds rather
 intended. Note that this confirms the stored record only: ClouDNS resolves ALIAS targets on its own
 schedule, so what the zone *serves* can lag a changed ALIAS record considerably. After repointing an
 ALIAS, check with `dig` against the zone's nameservers before assuming the change is live.
+
+## Development
+
+The project uses bun as its package manager and Node.js as its runtime.
+
+    bun install        # install dependencies from bun.lock, and build
+    bun run build      # compile src/ into lib/
+    bun run ncucheck   # list available dependency upgrades
+    bun run ncu        # apply them and reinstall
+    bun publish        # build and publish to the npm registry
+
+The compiled `lib/` is committed, so rebuild it before committing a change to `src/`.
