@@ -29,10 +29,22 @@ export declare function autoDetectCloudnsHostAndZone(cloudnsUsername: string, cl
  * colons and hyphens, and a DKIM record lives under `_domainkey`, which no export name can spell.
  * So ClouDNS:DKIM:<selector>:example:org stands for the CNAME <selector>._domainkey.example.org -
  * the shape SES Easy DKIM asks for, three of them per domain.
+ *
+ * DMARC is the same kind of form for `_dmarc`: ClouDNS:DMARC:example:org stands for the TXT record
+ * _dmarc.example.org, whose text is the export value, such as `v=DMARC1; p=none`.
  */
 export declare function parseExportName(exportName: string): {
     resourceType: string;
     resourceName: string;
+};
+/**
+ * Splits an export value into the record and, for MX, its preference: an MX export's value is
+ * `<priority> <mail server>`, such as `1 mail.example.org`, as the record is written in a zone file.
+ * Every other type's value is the record as-is.
+ */
+export declare function parseExportValue(exportName: string, resourceType: string, value: string): {
+    value: string;
+    priority?: string;
 };
 export declare function main(): Promise<void>;
 export {};
