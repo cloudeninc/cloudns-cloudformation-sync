@@ -50,6 +50,38 @@ That generates the following record in the ClouDNS zone example.org:
 
 This is the shape Amazon SES Easy DKIM asks for, with three such records per domain.
 
+### DMARC records
+
+A DMARC record lives under `_dmarc`, which no export name can spell either. Use the `DMARC` form,
+with the domain after it:
+
+    ClouDNS:DMARC:example:org
+
+with the record's text as the export value:
+
+    v=DMARC1; p=none
+
+That generates the following record in the ClouDNS zone example.org:
+
+    _dmarc.example.org TXT v=DMARC1; p=none
+
+### MX records
+
+An MX export's value is the preference and the mail server, separated by a space, as in a zone
+file:
+
+    ClouDNS:MX:example:org
+
+with the export value:
+
+    1 mail.example.org
+
+That generates the following record in the ClouDNS zone example.org:
+
+    example.org MX 1 mail.example.org
+
+A record is matched by its host and type, so one export manages one MX record per host.
+
 ## Command line usage
 
 Use the cloudns-cloudformation-sync command to synchronize ClouDNS records.

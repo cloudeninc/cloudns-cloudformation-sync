@@ -70,6 +70,8 @@ interface DesiredRecord {
   hostName: string
   type: string
   value: string
+  /** MX only: the preference, from the export value's first word */
+  priority?: string
   stackName: string
   exportName: string
 }
@@ -80,6 +82,7 @@ interface CloudnsRecord {
   type: string
   ttl: string
   record: string
+  priority?: string | number
   note?: string
 }
 
@@ -366,7 +369,7 @@ async function createOrUpdateCloudnsResource(
   const existingRecord = matching[0]
   const note = ownershipNote(desired.stackName, desired.exportName)
 
-  if (existingRecord && existingRecord.record === value && String(existingRecord.ttl) === String(ttlValue)) {
+  if (existingRecord && existingRecord.record === value && String(existingRecord.ttl) === String(ttlValue) && samePriority(existingRecord, desired)) {
     if (existingRecord.note === note) {
       console.log('OK', name, type, ttlValue, value, 'ZONE', zoneName, 'HOST', hostName)
     } else {
@@ -387,6 +390,7 @@ async function createOrUpdateCloudnsResource(
         'record-type': type,
         record: value,
         ttl: ttlValue,
+        ...(desired.priority !== undefined ? { priority: desired.priority } : {}),
       })
       assertSuccess(result, 'Modify record')
       await setRecordNote(cloudnsUsername, cloudnsPassword, zoneName, existingRecord.id, note, dryRun)
@@ -403,6 +407,7 @@ async function createOrUpdateCloudnsResource(
     'record-type': type,
     record: value,
     ttl: ttlValue,
+    ...(desired.priority !== undefined ? { priority: desired.priority } : {}),
   })
   assertSuccess(result, 'Add record')
   const createdId = result?.data?.id
@@ -423,11 +428,16 @@ async function verifyRecord(cloudnsUsername: string, cloudnsPassword: string, de
   if (!stored) {
     throw new Error(`Verification failed: ${desired.hostName}.${desired.zoneName} ${desired.type} is missing after write`)
   }
-  if (stored.record !== desired.value || String(stored.ttl) !== String(ttlValue)) {
+  if (stored.record !== desired.value || String(stored.ttl) !== String(ttlValue) || !samePriority(stored, desired)) {
     throw new Error(
-      `Verification failed: ${desired.hostName}.${desired.zoneName} ${desired.type} is ${stored.record} (ttl ${stored.ttl}), expected ${desired.value} (ttl ${ttlValue})`
+      `Verification failed: ${desired.hostName}.${desired.zoneName} ${desired.type} is ${stored.record} (ttl ${stored.ttl}, priority ${stored.priority ?? '-'}), expected ${desired.value} (ttl ${ttlValue}, priority ${desired.priority ?? '-'})`
     )
   }
+}
+
+/** Whether a stored record has the preference the export asks for; only MX exports ask for one. */
+function samePriority(stored: CloudnsRecord, desired: DesiredRecord): boolean {
+  return desired.priority === undefined || String(stored.priority) === desired.priority
 }
 
 /**
@@ -493,9 +503,19 @@ async function pruneOrphans(
  * colons and hyphens, and a DKIM record lives under `_domainkey`, which no export name can spell.
  * So ClouDNS:DKIM:<selector>:example:org stands for the CNAME <selector>._domainkey.example.org -
  * the shape SES Easy DKIM asks for, three of them per domain.
+ *
+ * DMARC is the same kind of form for `_dmarc`: ClouDNS:DMARC:example:org stands for the TXT record
+ * _dmarc.example.org, whose text is the export value, such as `v=DMARC1; p=none`.
  */
 export function parseExportName(exportName: string): { resourceType: string; resourceName: string } {
   const nameParts = exportName.split(':')
+  if (nameParts[1] === 'DMARC') {
+    const domainParts = nameParts.slice(2)
+    if (domainParts.length < 2 || domainParts.some((part) => !part)) {
+      throw new Error(`Export ${exportName} must be ClouDNS:DMARC:<domain labels>`)
+    }
+    return { resourceType: 'TXT', resourceName: `_dmarc.${domainParts.join('.')}` }
+  }
   if (nameParts[1] === 'DKIM') {
     const [selector, ...domainParts] = nameParts.slice(2)
     if (!selector || domainParts.length < 2) {
@@ -504,6 +524,18 @@ export function parseExportName(exportName: string): { resourceType: string; res
     return { resourceType: 'CNAME', resourceName: `${selector}._domainkey.${domainParts.join('.')}` }
   }
   return { resourceType: nameParts[1], resourceName: nameParts.slice(2).join('.') }
+}
+
+/**
+ * Splits an export value into the record and, for MX, its preference: an MX export's value is
+ * `<priority> <mail server>`, such as `1 mail.example.org`, as the record is written in a zone file.
+ * Every other type's value is the record as-is.
+ */
+export function parseExportValue(exportName: string, resourceType: string, value: string): { value: string; priority?: string } {
+  if (resourceType !== 'MX') return { value }
+  const match = value.trim().match(/^(\d+)\s+(\S+)$/)
+  if (!match) throw new Error(`Export ${exportName} must have the value "<priority> <mail server>", such as "1 mail.example.org"`)
+  return { value: match[2], priority: String(Number(match[1])) }
 }
 
 export async function main() {
@@ -551,6 +583,7 @@ export async function main() {
       if (!exportObj.Name?.match(/^ClouDNS:/)) continue
 
       const { resourceType, resourceName } = parseExportName(exportObj.Name)
+      const { value, priority } = parseExportValue(exportObj.Name, resourceType, exportObj.Value!)
       const { zoneName, hostName } = await autoDetectCloudnsHostAndZone(options.username, cloudnsPassword, resourceName, zoneCache)
       matchedStacks.add(stackName)
       matchedStackNames.add(stackName)
@@ -559,7 +592,8 @@ export async function main() {
         zoneName,
         hostName,
         type: resourceType,
-        value: exportObj.Value!,
+        value,
+        ...(priority !== undefined ? { priority } : {}),
         stackName,
         exportName: exportObj.Name,
       })
